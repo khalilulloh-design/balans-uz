@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Moliyaviy boshqaruv</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 dark:text-white min-h-screen">
+  <div class="container mx-auto p-6">
+  <header class="flex justify-between items-center mb-6">
+  <h1 class="text-2xl font-bold">💰 Moliyaviy boshqaruv</h1>
+  <p class="text-sm text-gray-600">Oddiy, tez va ishonchli — daromad va xarajatlaringizni boshqaring.</p>
+</header>
+
+
+
+    <!-- Balans -->
+    <div class="grid md:grid-cols-3 gap-6 mb-6">
+      <div class="p-4 bg-white dark:bg-gray-800 shadow rounded-2xl">
+        <h2 class="text-lg font-semibold">Umumiy balans</h2>
+        <p id="balance" class="text-2xl font-bold text-green-500">0 UZS</p>
+      </div>
+      <div class="p-4 bg-white dark:bg-gray-800 shadow rounded-2xl">
+        <h2 class="text-lg font-semibold">Daromad</h2>
+        <p id="income" class="text-2xl font-bold text-blue-500">0 UZS</p>
+      </div>
+      <div class="p-4 bg-white dark:bg-gray-800 shadow rounded-2xl">
+        <h2 class="text-lg font-semibold">Xarajat</h2>
+        <p id="expense" class="text-2xl font-bold text-red-500">0 UZS</p>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="mb-6">
+      <h2 class="font-semibold mb-2">Daromad / Xarajat nisbati</h2>
+      <div class="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-5">
+        <div id="progressIncome" class="bg-green-500 h-5 rounded-l-full"></div>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div class="p-6 bg-white dark:bg-gray-800 shadow rounded-2xl">
+        <h2 class="text-xl font-bold mb-4">➕ Daromad/Xarajat qo‘shish</h2>
+        <form id="transactionForm" class="space-y-3">
+          <input id="desc" type="text" placeholder="Izoh (masalan: Oziq-ovqat)" class="w-full p-2 rounded border text-black" required />
+          <input id="amount" type="number" placeholder="Summasi" class="w-full p-2 rounded border text-black" required />
+          <select id="type" class="w-full p-2 rounded border text-black">
+            <option value="income">Daromad</option>
+            <option value="expense">Xarajat</option>
+          </select>
+          <button class="w-full bg-green-600 text-white py-2 rounded-lg">Qo‘shish</button>
+        </form>
+      </div>
+
+      <div class="p-6 bg-white dark:bg-gray-800 shadow rounded-2xl">
+        <h2 class="text-xl font-bold mb-4">💳 Qarz qo‘shish</h2>
+        <form id="debtForm" class="space-y-3">
+          <input id="debtor" type="text" placeholder="Kimga / Kimdan" class="w-full p-2 rounded border text-black" required />
+          <input id="debtAmount" type="number" placeholder="Summasi" class="w-full p-2 rounded border text-black" required />
+          <input id="debtDate" type="date" class="w-full p-2 rounded border text-black" required />
+          <button class="w-full bg-red-600 text-white py-2 rounded-lg">Qarz qo‘shish</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Listlar -->
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="p-6 bg-white dark:bg-gray-800 shadow rounded-2xl">
+        <h2 class="text-xl font-bold mb-4">📋 Yozuvlar</h2>
+        <ul id="transactionList" class="space-y-2 text-sm"></ul>
+      </div>
+
+      <div class="p-6 bg-white dark:bg-gray-800 shadow rounded-2xl">
+        <h2 class="text-xl font-bold mb-4">📝 Qarzlar</h2>
+        <ul id="debtList" class="space-y-2 text-sm"></ul>
+      </div>
+    </div>
+
+    <!-- Grafik -->
+    <div class="mt-6 p-6 bg-white dark:bg-gray-800 shadow rounded-2xl">
+      <h2 class="text-xl font-bold mb-4">📊 Diagramma</h2>
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const balanceEl = document.getElementById("balance");
+    const incomeEl = document.getElementById("income");
+    const expenseEl = document.getElementById("expense");
+    const transactionForm = document.getElementById("transactionForm");
+    const transactionList = document.getElementById("transactionList");
+    const debtForm = document.getElementById("debtForm");
+    const debtList = document.getElementById("debtList");
+    const progressIncome = document.getElementById("progressIncome");
+
+    let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+    let debts = JSON.parse(localStorage.getItem("debts")) || [];
+    let chartInstance = null;
+
+    function updateUI() {
+      let income = transactions.filter(t => t.type==="income").reduce((a,b)=>a+b.amount,0);
+      let expense = transactions.filter(t => t.type==="expense").reduce((a,b)=>a+b.amount,0);
+      let balance = income - expense;
+
+      incomeEl.textContent = income + " UZS";
+      expenseEl.textContent = expense + " UZS";
+      balanceEl.textContent = balance + " UZS";
+
+      // Progress bar
+      let total = income + expense;
+      let incomePercent = total ? (income / total) * 100 : 0;
+      progressIncome.style.width = incomePercent + "%";
+
+      // Transaction list
+      transactionList.innerHTML = "";
+      transactions.forEach((t,i)=>{
+        let li = document.createElement("li");
+        li.className="flex justify-between bg-gray-100 dark:bg-gray-700 p-2 rounded";
+        li.innerHTML = `${t.desc} - ${t.amount} UZS <span class="font-bold ${t.type==='income'?'text-green-500':'text-red-500'}">${t.type}</span>
+          <button onclick="deleteTransaction(${i})" class="text-xs text-white bg-red-500 px-2 rounded">❌</button>`;
+        transactionList.appendChild(li);
+      });
+
+      // Debts list
+      debtList.innerHTML = "";
+      debts.forEach((d,i)=>{
+        let li = document.createElement("li");
+        li.className="flex justify-between bg-gray-100 dark:bg-gray-700 p-2 rounded";
+        li.innerHTML = `${d.person} - ${d.amount} UZS (muddat: ${d.date})
+          <button onclick="deleteDebt(${i})" class="text-xs text-white bg-red-500 px-2 rounded">❌</button>`;
+        debtList.appendChild(li);
+      });
+
+      // Chart
+      const ctx = document.getElementById("chart");
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx,{
+        type:"doughnut",
+        data:{
+          labels:["Daromad","Xarajat"],
+          datasets:[{data:[income,expense], backgroundColor:["#22c55e","#ef4444"]}]
+        }
+      });
+    }
+
+    transactionForm.addEventListener("submit", e=>{
+      e.preventDefault();
+      const desc=document.getElementById("desc").value;
+      const amount=parseFloat(document.getElementById("amount").value);
+      const type=document.getElementById("type").value;
+      transactions.push({desc,amount,type});
+      localStorage.setItem("transactions",JSON.stringify(transactions));
+      transactionForm.reset();
+      updateUI();
+    });
+
+    debtForm.addEventListener("submit", e=>{
+      e.preventDefault();
+      const person=document.getElementById("debtor").value;
+      const amount=parseFloat(document.getElementById("debtAmount").value);
+      const date=document.getElementById("debtDate").value;
+      debts.push({person,amount,date});
+      localStorage.setItem("debts",JSON.stringify(debts));
+      debtForm.reset();
+      updateUI();
+    });
+
+    function deleteTransaction(i){
+      transactions.splice(i,1);
+      localStorage.setItem("transactions",JSON.stringify(transactions));
+      updateUI();
+    }
+    function deleteDebt(i){
+      debts.splice(i,1);
+      localStorage.setItem("debts",JSON.stringify(debts));
+      updateUI();
+    }
+
+    // Dark mode
+    const toggleBtn = document.getElementById("toggleDark");
+    if(localStorage.getItem("theme")==="dark"){
+      document.documentElement.classList.add("dark");
+    }
+    toggleBtn.addEventListener("click",()=>{
+      document.documentElement.classList.toggle("dark");
+      if(document.documentElement.classList.contains("dark")){
+        localStorage.setItem("theme","dark");
+      } else {
+        localStorage.setItem("theme","light");
+      }
+    });
+
+    updateUI();
+  </script>
+</body>
+</html>
+<!-- Language selector -->
+<div class="bg-white dark:bg-gray-800 rounded-lg p-2 shadow flex items-center gap-2">
+  <label for="langSelect" id="langLabel" class="text-sm text-gray-600 dark:text-gray-300">Til:</label>
+  <select id="langSelect" class="bg-transparent outline-none text-sm">
+    <option value="uz">UZ</option>
+    <option value="ru">RU</option>
+    <option value="en">EN</option>
+  </select>
+</div>
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>💼 Balans uz</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+
+  <!-- Modal -->
+  <div id="authModal" class="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+    <div class="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
+      <h2 class="text-2xl font-bold mb-2 text-center">💼 Balans uz</h2>
+      <p class="text-sm text-gray-600 mb-4 text-center">Har bir so‘m hisobda — kategoriyalar, valyuta, eslatmalar va eksport.</p>
+
+      <div class="space-y-3">
+        <button id="openLogin" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg">Kirish</button>
+        <button id="openRegister" class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg">Ro'yxatdan o'tish</button>
+        <button id="guestBtn" class="w-full px-4 py-2 bg-gray-200 rounded-lg">Mehmon sifatida davom etish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kirish formasi -->
+  <div id="loginForm" class="hidden fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+    <div class="bg-white p-6 rounded-2xl w-full max-w-sm">
+      <h3 class="text-xl font-semibold mb-4">Kirish</h3>
+      <input id="loginEmail" type="text" placeholder="Email" class="w-full mb-3 p-2 border rounded">
+      <input id="loginPass" type="password" placeholder="Parol" class="w-full mb-3 p-2 border rounded">
+      <div class="flex gap-2">
+        <button id="loginSubmit" class="flex-1 px-4 py-2 bg-green-600 text-white rounded">Kirish</button>
+        <button id="closeLogin" class="flex-1 px-4 py-2 bg-gray-300 rounded">Orqaga</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ro'yxatdan o'tish formasi -->
+  <div id="registerForm" class="hidden fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+    <div class="bg-white p-6 rounded-2xl w-full max-w-sm">
+      <h3 class="text-xl font-semibold mb-4">Ro'yxatdan o'tish</h3>
+      <input id="regEmail" type="text" placeholder="Email" class="w-full mb-3 p-2 border rounded">
+      <input id="regPass" type="password" placeholder="Parol" class="w-full mb-3 p-2 border rounded">
+      <div class="flex gap-2">
+        <button id="registerSubmit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded">Ro'yxatdan o'tish</button>
+        <button id="closeRegister" class="flex-1 px-4 py-2 bg-gray-300 rounded">Orqaga</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Elementlar
+    const authModal = document.getElementById("authModal");
+    const openLogin = document.getElementById("openLogin");
+    const openRegister = document.getElementById("openRegister");
+    const guestBtn = document.getElementById("guestBtn");
+
+    const loginForm = document.getElementById("loginForm");
+    const registerForm = document.getElementById("registerForm");
+    const closeLogin = document.getElementById("closeLogin");
+    const closeRegister = document.getElementById("closeRegister");
+
+    const loginSubmit = document.getElementById("loginSubmit");
+    const registerSubmit = document.getElementById("registerSubmit");
+
+    // LocalStorage kaliti
+    const CUR_USER = "balans_user";
+
+    // Saytga kirganda tekshir
+    window.addEventListener("load", () => {
+      const cur = localStorage.getItem(CUR_USER);
+      if (cur) {
+        authModal.classList.add("hidden");
+        alert("Xush kelibsiz, " + cur);
+      }
+    });
+
+    // Kirish tugmasi
+    openLogin.addEventListener("click", () => {
+      loginForm.classList.remove("hidden");
+    });
+
+    // Ro‘yxatdan o‘tish tugmasi
+    openRegister.addEventListener("click", () => {
+      registerForm.classList.remove("hidden");
+    });
+
+    // Mehmon sifatida kirish
+    guestBtn.addEventListener("click", () => {
+      localStorage.setItem(CUR_USER, "guest");
+      authModal.classList.add("hidden");
+      alert("Siz mehmon sifatida kirdingiz ✅");
+    });
+
+    // Login submit
+    loginSubmit.addEventListener("click", () => {
+      const email = document.getElementById("loginEmail").value.trim();
+      if (email) {
+        localStorage.setItem(CUR_USER, email);
+        loginForm.classList.add("hidden");
+        authModal.classList.add("hidden");
+        alert("Kirdingiz: " + email);
+      }
+    });
+
+    // Register submit
+    registerSubmit.addEventListener("click", () => {
+      const email = document.getElementById("regEmail").value.trim();
+      if (email) {
+        localStorage.setItem(CUR_USER, email);
+        registerForm.classList.add("hidden");
+        authModal.classList.add("hidden");
+        alert("Ro'yxatdan o'tdingiz: " + email);
+      }
+    });
+
+    // Orqaga tugmalari
+    closeLogin.addEventListener("click", () => {
+      loginForm.classList.add("hidden");
+    });
+
+    closeRegister.addEventListener("click", () => {
+      registerForm.classList.add("hidden");
+    });
+  </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>💼 Balans uz</title>
+
+  <!-- Google tasdiqlash -->
+  <meta name="google-site-verification" content="nyi_jl0Z01gTfyF9HINHirCFnwkTs5KFDUHRMaA8kRU" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 dark:text-white min-h-screen">
+  <div class="container mx-auto p-6">
+    <!-- Sizning veb-ilovangiz kontenti shu yerda -->
+    <header class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold">💰 Moliyaviy boshqaruv</h1>
+      <p class="text-sm text-gray-600">Oddiy, tez va ishonchli — daromad va xarajatlaringizni boshqaring.</p>
+    </header>
+
+    <!-- Balans, daromad, xarajatlar, formalar, listlar, grafiklar -->
+    <!-- Shu yerga siz ilgari yozgan barcha kodni qo‘shishingiz mumkin -->
+  </div>
+
+  <!-- Modal va autentifikatsiya formalarini qo‘shish -->
+  <div id="authModal" class="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+    <!-- Modal ichidagi kontent shu yerda -->
+  </div>
+
+  <script>
+    // Sizning barcha JavaScript kodlaringiz shu yerga kiritiladi
+    // transactions, debts, dark mode, kirish/ro'yxatdan o'tish/guest funksiyalari
+  </script>
+</body>
+</html>
